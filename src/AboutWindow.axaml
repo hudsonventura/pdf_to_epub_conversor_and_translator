@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="350" d:DesignHeight="200"
+        x:Class="BookTranslator.AboutWindow"
+        Title="About"
+        Width="350" Height="200"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <StackPanel Margin="20" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock Text="📚 PDF to EPUB Translator" 
+                   FontSize="18" 
+                   FontWeight="Bold" 
+                   HorizontalAlignment="Center"/>
+        
+        <TextBlock Text="Version 1.0.0" 
+                   FontSize="12" 
+                   HorizontalAlignment="Center"
+                   Foreground="Gray"/>
+        
+        <TextBlock Text="Developed by Hudson Ventura" 
+                   FontSize="14" 
+                   HorizontalAlignment="Center"/>
+        
+        <Button Name="GitHubButton"
+                Content="🔗 github.com/hudsonventura"
+                HorizontalAlignment="Center"
+                Background="Transparent"
+                Foreground="#007ACC"
+                FontWeight="SemiBold"
+                Cursor="Hand"/>
+        
+        <Button Content="Close"
+                HorizontalAlignment="Center"
+                Width="80"
+                Click="CloseButton_Click"/>
+    </StackPanel>
+</Window>
