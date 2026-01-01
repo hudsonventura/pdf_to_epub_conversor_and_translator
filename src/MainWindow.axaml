@@ -6,8 +6,8 @@
         mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="300"
         x:Class="BookTranslator.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="PDF to EPUB Translator"
-        Width="500" Height="470"
+        Title="Book Translator"
+        Width="520" Height="520"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
@@ -43,7 +43,21 @@
                       VerticalAlignment="Center"/>
         </StackPanel>
         
-        <StackPanel Orientation="Horizontal" Spacing="10">
+        <!-- Output Format Selection -->
+        <StackPanel Orientation="Horizontal" Spacing="20">
+            <TextBlock Text="Output Format:" VerticalAlignment="Center"/>
+            <RadioButton Content="PDF (translate only)"
+                         IsChecked="{Binding IsPdfSelected}"
+                         GroupName="OutputFormat"
+                         VerticalAlignment="Center"/>
+            <RadioButton Content="EPUB (ebook)"
+                         IsChecked="{Binding IsEpubSelected}"
+                         GroupName="OutputFormat"
+                         VerticalAlignment="Center"/>
+        </StackPanel>
+        
+        <!-- Kindle optimization - only visible when EPUB selected -->
+        <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding IsEpubSelected}">
             <CheckBox Content="Optimize for Kindle (EPUB→AZW3→EPUB, requires Calibre)"
                       IsChecked="{Binding ConvertToAzw3}"
                       VerticalAlignment="Center"/>
@@ -70,7 +84,7 @@
                     Command="{Binding SelectOutputDirectoryCommand}"/>
         </Grid>
         
-        <Button Content="Convert to EPUB" 
+        <Button Content="Convert" 
                 Command="{Binding ConvertCommand}" 
                 HorizontalAlignment="Stretch" 
                 HorizontalContentAlignment="Center"

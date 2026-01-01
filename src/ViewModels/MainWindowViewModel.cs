@@ -17,6 +17,12 @@ public class LanguageItem
     public override string ToString() => Name;
 }
 
+public enum OutputFormat
+{
+    Pdf,
+    Epub
+}
+
 public class MainWindowViewModel : ReactiveObject
 {
     private readonly PreferencesService _preferencesService = new();
@@ -84,6 +90,33 @@ public class MainWindowViewModel : ReactiveObject
             this.RaiseAndSetIfChanged(ref _convertToAzw3, value);
             SavePreferences();
         }
+    }
+
+    // Output format selection (PDF or EPUB)
+    private OutputFormat _selectedOutputFormat = OutputFormat.Epub;
+    public OutputFormat SelectedOutputFormat
+    {
+        get => _selectedOutputFormat;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _selectedOutputFormat, value);
+            this.RaisePropertyChanged(nameof(IsPdfSelected));
+            this.RaisePropertyChanged(nameof(IsEpubSelected));
+            SavePreferences();
+        }
+    }
+
+    // Helper properties for radio button binding
+    public bool IsPdfSelected
+    {
+        get => SelectedOutputFormat == OutputFormat.Pdf;
+        set { if (value) SelectedOutputFormat = OutputFormat.Pdf; }
+    }
+
+    public bool IsEpubSelected
+    {
+        get => SelectedOutputFormat == OutputFormat.Epub;
+        set { if (value) SelectedOutputFormat = OutputFormat.Epub; }
     }
 
     // Check if Calibre is installed for AZW3 conversion
@@ -170,6 +203,9 @@ public class MainWindowViewModel : ReactiveObject
         _lastDirectory = prefs.LastDirectory;
         _outputDirectory = prefs.OutputDirectory;
         
+        // Load output format
+        _selectedOutputFormat = prefs.OutputFormat == "Pdf" ? OutputFormat.Pdf : OutputFormat.Epub;
+        
         // Find matching language or default to first
         _selectedLanguage = AvailableLanguages.Find(l => l.Code == prefs.SelectedLanguageCode) 
                             ?? AvailableLanguages[0];
@@ -183,7 +219,8 @@ public class MainWindowViewModel : ReactiveObject
             LastDirectory = LastDirectory,
             OutputDirectory = OutputDirectory,
             TranslateBeforeConvert = TranslateBeforeConvert,
-            ConvertToAzw3 = ConvertToAzw3
+            ConvertToAzw3 = ConvertToAzw3,
+            OutputFormat = SelectedOutputFormat.ToString()
         };
         _preferencesService.Save(prefs);
     }
@@ -274,73 +311,97 @@ public class MainWindowViewModel : ReactiveObject
             string outputPath = Path.ChangeExtension(input, ".md");
             await File.WriteAllTextAsync(outputPath, finalMd);
 
-            // Generate EPUB
-            StatusMessage = "Generating EPUB...";
-            
             // Use output directory if specified, otherwise use same folder as input
             string outputDir = !string.IsNullOrEmpty(OutputDirectory) 
                 ? OutputDirectory 
                 : Path.GetDirectoryName(input) ?? "";
-            
-            string epubOutputPath = Path.Combine(
-                outputDir,
-                Path.GetFileNameWithoutExtension(input) + epubSuffix + ".epub"
-            );
 
-            await Task.Run(() =>
+            string finalOutputPath;
+
+            if (SelectedOutputFormat == OutputFormat.Pdf)
             {
-                var epubConverter = new MarkdownToEpubConverter();
-                epubConverter.Convert(finalMd, epubOutputPath, coverBytes);
-            });
-
-            string finalOutputPath = epubOutputPath;
-
-            // Convert via AZW3 for better Kindle compatibility (EPUB → AZW3 → EPUB round-trip)
-            if (ConvertToAzw3)
-            {
-                if (CalibreConverter.IsCalibreInstalled())
+                // PDF output: Convert markdown to PDF
+                StatusMessage = "Generating PDF...";
+                
+                string pdfOutputPath = Path.Combine(
+                    outputDir,
+                    Path.GetFileNameWithoutExtension(input) + epubSuffix + "_translated.pdf"
+                );
+                
+                await Task.Run(() =>
                 {
-                    var calibreProgress = new Progress<string>(msg =>
-                    {
-                        ProgressText = msg;
-                    });
-
-                    var calibreConverter = new CalibreConverter();
-                    
-                    // Step 1: EPUB → AZW3
-                    StatusMessage = "Converting EPUB to AZW3...";
-                    ProgressText = "EPUB → AZW3...";
-                    string azw3OutputPath = Path.ChangeExtension(epubOutputPath, ".azw3");
-                    await calibreConverter.ConvertEpubToAzw3Async(epubOutputPath, azw3OutputPath, calibreProgress);
-                    
-                    // Step 2: AZW3 → EPUB (this fixes validation issues)
-                    StatusMessage = "Converting AZW3 back to EPUB...";
-                    ProgressText = "AZW3 → EPUB...";
-                    string polishedEpubPath = Path.Combine(
-                        Path.GetDirectoryName(epubOutputPath) ?? "",
-                        Path.GetFileNameWithoutExtension(epubOutputPath) + "_kindle.epub"
-                    );
-                    await calibreConverter.ConvertAzw3ToEpubAsync(azw3OutputPath, polishedEpubPath, calibreProgress);
-                    
-                    finalOutputPath = polishedEpubPath;
-                    StatusMessage = $"Success! Kindle-compatible EPUB saved to: {polishedEpubPath}";
-
-                    // Clean up intermediate files (original EPUB and AZW3)
-                    try
-                    {
-                        if (File.Exists(epubOutputPath)) File.Delete(epubOutputPath);
-                        if (File.Exists(azw3OutputPath)) File.Delete(azw3OutputPath);
-                    }
-                    catch { /* Ignore cleanup errors */ }
-                }
-                else
-                {
-                    StatusMessage = $"EPUB saved: {epubOutputPath} (Install Calibre for Kindle optimization)";
-                }
+                    var pdfConverter = new MarkdownToPdfConverter();
+                    pdfConverter.Convert(finalMd, pdfOutputPath);
+                });
+                
+                finalOutputPath = pdfOutputPath;
+                StatusMessage = $"Success! PDF saved to: {pdfOutputPath}";
             }
             else
             {
-                StatusMessage = $"Success! Saved to: {epubOutputPath}";
+                // EPUB output
+                StatusMessage = "Generating EPUB...";
+                
+                string epubOutputPath = Path.Combine(
+                    outputDir,
+                    Path.GetFileNameWithoutExtension(input) + epubSuffix + ".epub"
+                );
+
+                await Task.Run(() =>
+                {
+                    var epubConverter = new MarkdownToEpubConverter();
+                    epubConverter.Convert(finalMd, epubOutputPath, coverBytes);
+                });
+
+                finalOutputPath = epubOutputPath;
+
+                // Convert via AZW3 for better Kindle compatibility (EPUB → AZW3 → EPUB round-trip)
+                if (ConvertToAzw3)
+                {
+                    if (CalibreConverter.IsCalibreInstalled())
+                    {
+                        var calibreProgress = new Progress<string>(msg =>
+                        {
+                            ProgressText = msg;
+                        });
+
+                        var calibreConverter = new CalibreConverter();
+                        
+                        // Step 1: EPUB → AZW3
+                        StatusMessage = "Converting EPUB to AZW3...";
+                        ProgressText = "EPUB → AZW3...";
+                        string azw3OutputPath = Path.ChangeExtension(epubOutputPath, ".azw3");
+                        await calibreConverter.ConvertEpubToAzw3Async(epubOutputPath, azw3OutputPath, calibreProgress);
+                        
+                        // Step 2: AZW3 → EPUB (this fixes validation issues)
+                        StatusMessage = "Converting AZW3 back to EPUB...";
+                        ProgressText = "AZW3 → EPUB...";
+                        string polishedEpubPath = Path.Combine(
+                            outputDir,
+                            Path.GetFileNameWithoutExtension(input) + epubSuffix + "_kindle.epub"
+                        );
+                        await calibreConverter.ConvertAzw3ToEpubAsync(azw3OutputPath, polishedEpubPath, calibreProgress);
+                        
+                        finalOutputPath = polishedEpubPath;
+                        StatusMessage = $"Success! Kindle-compatible EPUB saved to: {polishedEpubPath}";
+
+                        // Clean up intermediate files (original EPUB and AZW3)
+                        try
+                        {
+                            if (File.Exists(epubOutputPath)) File.Delete(epubOutputPath);
+                            if (File.Exists(azw3OutputPath)) File.Delete(azw3OutputPath);
+                        }
+                        catch { /* Ignore cleanup errors */ }
+                    }
+                    else
+                    {
+                        StatusMessage = $"EPUB saved: {epubOutputPath} (Install Calibre for Kindle optimization)";
+                    }
+                }
+                else
+                {
+                    StatusMessage = $"Success! Saved to: {epubOutputPath}";
+                }
             }
 
             // Clean up intermediate markdown file (keep original PDF)

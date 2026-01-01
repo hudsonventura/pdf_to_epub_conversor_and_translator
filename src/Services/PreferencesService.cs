@@ -59,4 +59,5 @@ public class UserPreferences
     public string? OutputDirectory { get; set; }
     public bool TranslateBeforeConvert { get; set; } = true;
     public bool ConvertToAzw3 { get; set; } = true;
+    public string OutputFormat { get; set; } = "Epub";  // "Pdf" or "Epub"
 }
