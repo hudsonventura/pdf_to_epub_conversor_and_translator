@@ -7,7 +7,7 @@
         x:Class="BookTranslator.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="PDF to EPUB Translator"
-        Width="500" Height="380"
+        Width="500" Height="470"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
@@ -42,6 +42,33 @@
                       Width="180"
                       VerticalAlignment="Center"/>
         </StackPanel>
+        
+        <StackPanel Orientation="Horizontal" Spacing="10">
+            <CheckBox Content="Optimize for Kindle (EPUB→AZW3→EPUB, requires Calibre)"
+                      IsChecked="{Binding ConvertToAzw3}"
+                      VerticalAlignment="Center"/>
+            <TextBlock Text="⚠️ Calibre not found"
+                       Foreground="Orange"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding !IsCalibreInstalled}"/>
+        </StackPanel>
+        
+        <Grid ColumnDefinitions="Auto, *, Auto">
+            <TextBlock Grid.Column="0" 
+                       Text="Output:" 
+                       VerticalAlignment="Center"
+                       Margin="0,0,10,0"/>
+            <TextBox Grid.Column="1" 
+                     Text="{Binding OutputDirectory}" 
+                     IsReadOnly="True" 
+                     Watermark="Same as input file..." 
+                     Margin="0,0,10,0"/>
+            <Button Grid.Column="2" 
+                    Content="📁" 
+                    ToolTip.Tip="Select output folder"
+                    Command="{Binding SelectOutputDirectoryCommand}"/>
+        </Grid>
         
         <Button Content="Convert to EPUB" 
                 Command="{Binding ConvertCommand}" 

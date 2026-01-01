@@ -74,6 +74,21 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 
+    // Convert to AZW3 for better Kindle compatibility (requires Calibre)
+    private bool _convertToAzw3 = true;
+    public bool ConvertToAzw3
+    {
+        get => _convertToAzw3;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _convertToAzw3, value);
+            SavePreferences();
+        }
+    }
+
+    // Check if Calibre is installed for AZW3 conversion
+    public bool IsCalibreInstalled => CalibreConverter.IsCalibreInstalled();
+
     // Language selection
     public List<LanguageItem> AvailableLanguages { get; } = new()
     {
@@ -108,11 +123,26 @@ public class MainWindowViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _lastDirectory, value);
     }
 
+    // Output directory for converted files
+    private string? _outputDirectory;
+    public string? OutputDirectory
+    {
+        get => _outputDirectory;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _outputDirectory, value);
+            SavePreferences();
+        }
+    }
+
     public ReactiveCommand<Unit, Unit> SelectFileCommand { get; }
     public ReactiveCommand<Unit, Unit> ConvertCommand { get; }
+    public ReactiveCommand<Unit, Unit> SelectOutputDirectoryCommand { get; }
 
     // Delegate to open file dialog, set by the View
     public Func<string?, Task<string?>>? ShowOpenFileDialog { get; set; }
+    // Delegate to open folder dialog, set by the View
+    public Func<string?, Task<string?>>? ShowSelectFolderDialog { get; set; }
 
     public MainWindowViewModel()
     {
@@ -120,6 +150,7 @@ public class MainWindowViewModel : ReactiveObject
         LoadPreferences();
 
         SelectFileCommand = ReactiveCommand.CreateFromTask(SelectFileAsync);
+        SelectOutputDirectoryCommand = ReactiveCommand.CreateFromTask(SelectOutputDirectoryAsync);
         // Enable convert when file path is valid and not busy
         var canConvert = this.WhenAnyValue(
             x => x.InputFilePath,
@@ -135,7 +166,9 @@ public class MainWindowViewModel : ReactiveObject
     {
         var prefs = _preferencesService.Load();
         _translateBeforeConvert = prefs.TranslateBeforeConvert;
+        _convertToAzw3 = prefs.ConvertToAzw3;
         _lastDirectory = prefs.LastDirectory;
+        _outputDirectory = prefs.OutputDirectory;
         
         // Find matching language or default to first
         _selectedLanguage = AvailableLanguages.Find(l => l.Code == prefs.SelectedLanguageCode) 
@@ -148,9 +181,24 @@ public class MainWindowViewModel : ReactiveObject
         {
             SelectedLanguageCode = SelectedLanguage?.Code ?? "pt",
             LastDirectory = LastDirectory,
-            TranslateBeforeConvert = TranslateBeforeConvert
+            OutputDirectory = OutputDirectory,
+            TranslateBeforeConvert = TranslateBeforeConvert,
+            ConvertToAzw3 = ConvertToAzw3
         };
         _preferencesService.Save(prefs);
+    }
+
+    private async Task SelectOutputDirectoryAsync()
+    {
+        if (ShowSelectFolderDialog != null)
+        {
+            var folder = await ShowSelectFolderDialog.Invoke(OutputDirectory ?? LastDirectory);
+            if (!string.IsNullOrEmpty(folder))
+            {
+                OutputDirectory = folder;
+                StatusMessage = $"Output: {folder}";
+            }
+        }
     }
 
     private async Task SelectFileAsync()
@@ -228,8 +276,14 @@ public class MainWindowViewModel : ReactiveObject
 
             // Generate EPUB
             StatusMessage = "Generating EPUB...";
+            
+            // Use output directory if specified, otherwise use same folder as input
+            string outputDir = !string.IsNullOrEmpty(OutputDirectory) 
+                ? OutputDirectory 
+                : Path.GetDirectoryName(input) ?? "";
+            
             string epubOutputPath = Path.Combine(
-                Path.GetDirectoryName(input) ?? "",
+                outputDir,
                 Path.GetFileNameWithoutExtension(input) + epubSuffix + ".epub"
             );
 
@@ -239,24 +293,70 @@ public class MainWindowViewModel : ReactiveObject
                 epubConverter.Convert(finalMd, epubOutputPath, coverBytes);
             });
 
-            StatusMessage = $"Success! Saved to: {epubOutputPath}";
+            string finalOutputPath = epubOutputPath;
 
-            // Auto-cleanup original and md files
+            // Convert via AZW3 for better Kindle compatibility (EPUB → AZW3 → EPUB round-trip)
+            if (ConvertToAzw3)
+            {
+                if (CalibreConverter.IsCalibreInstalled())
+                {
+                    var calibreProgress = new Progress<string>(msg =>
+                    {
+                        ProgressText = msg;
+                    });
+
+                    var calibreConverter = new CalibreConverter();
+                    
+                    // Step 1: EPUB → AZW3
+                    StatusMessage = "Converting EPUB to AZW3...";
+                    ProgressText = "EPUB → AZW3...";
+                    string azw3OutputPath = Path.ChangeExtension(epubOutputPath, ".azw3");
+                    await calibreConverter.ConvertEpubToAzw3Async(epubOutputPath, azw3OutputPath, calibreProgress);
+                    
+                    // Step 2: AZW3 → EPUB (this fixes validation issues)
+                    StatusMessage = "Converting AZW3 back to EPUB...";
+                    ProgressText = "AZW3 → EPUB...";
+                    string polishedEpubPath = Path.Combine(
+                        Path.GetDirectoryName(epubOutputPath) ?? "",
+                        Path.GetFileNameWithoutExtension(epubOutputPath) + "_kindle.epub"
+                    );
+                    await calibreConverter.ConvertAzw3ToEpubAsync(azw3OutputPath, polishedEpubPath, calibreProgress);
+                    
+                    finalOutputPath = polishedEpubPath;
+                    StatusMessage = $"Success! Kindle-compatible EPUB saved to: {polishedEpubPath}";
+
+                    // Clean up intermediate files (original EPUB and AZW3)
+                    try
+                    {
+                        if (File.Exists(epubOutputPath)) File.Delete(epubOutputPath);
+                        if (File.Exists(azw3OutputPath)) File.Delete(azw3OutputPath);
+                    }
+                    catch { /* Ignore cleanup errors */ }
+                }
+                else
+                {
+                    StatusMessage = $"EPUB saved: {epubOutputPath} (Install Calibre for Kindle optimization)";
+                }
+            }
+            else
+            {
+                StatusMessage = $"Success! Saved to: {epubOutputPath}";
+            }
+
+            // Clean up intermediate markdown file (keep original PDF)
             try
             {
-                if (File.Exists(input)) File.Delete(input);
                 if (File.Exists(outputPath)) File.Delete(outputPath);
-                StatusMessage += " (Cleanup done)";
             }
-            catch (Exception cleanupEx)
+            catch
             {
-                StatusMessage += $" (Cleanup failed: {cleanupEx.Message})";
+                // Ignore cleanup errors
             }
 
             ProgressText = "Done";
 
             // Enable/Setup for email
-            GeneratedPdfPath = epubOutputPath;
+            GeneratedPdfPath = finalOutputPath;
         }
         catch (Exception ex)
         {

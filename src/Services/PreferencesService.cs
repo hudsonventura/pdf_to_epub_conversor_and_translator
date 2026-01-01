@@ -56,5 +56,7 @@ public class UserPreferences
 {
     public string SelectedLanguageCode { get; set; } = "pt";
     public string? LastDirectory { get; set; }
+    public string? OutputDirectory { get; set; }
     public bool TranslateBeforeConvert { get; set; } = true;
+    public bool ConvertToAzw3 { get; set; } = true;
 }

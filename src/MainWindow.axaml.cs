@@ -54,6 +54,42 @@ public partial class MainWindow : Window
             return file.Path.ToString();
         };
 
+        // Inject folder dialog logic for output directory
+        vm.ShowSelectFolderDialog = async (lastDirectory) =>
+        {
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel == null) return null;
+
+            IStorageFolder? startLocation = null;
+            if (!string.IsNullOrEmpty(lastDirectory))
+            {
+                try
+                {
+                    startLocation = await topLevel.StorageProvider.TryGetFolderFromPathAsync(lastDirectory);
+                }
+                catch
+                {
+                    // Ignore if folder doesn't exist
+                }
+            }
+
+            var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select Output Folder",
+                AllowMultiple = false,
+                SuggestedStartLocation = startLocation
+            });
+
+            var folder = folders.FirstOrDefault();
+            if (folder == null) return null;
+
+            if (folder.Path.IsAbsoluteUri)
+            {
+                return folder.Path.LocalPath;
+            }
+            return folder.Path.ToString();
+        };
+
         // Wire up About button
         var aboutButton = this.FindControl<Button>("AboutButton");
         if (aboutButton != null)
