@@ -17,7 +17,7 @@ public partial class MainWindow : Window
         DataContext = vm;
 
         // Inject file dialog logic with last directory support
-        vm.ShowOpenFileDialog = async (lastDirectory) =>
+        vm.ShowOpenFilesDialog = async (lastDirectory) =>
         {
             var topLevel = TopLevel.GetTopLevel(this);
             if (topLevel == null) return null;
@@ -37,21 +37,16 @@ public partial class MainWindow : Window
 
             var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "Select PDF",
-                AllowMultiple = false,
+                Title = "Select PDF Files",
+                AllowMultiple = true,
                 FileTypeFilter = new[] { FilePickerFileTypes.Pdf },
                 SuggestedStartLocation = startLocation
             });
 
-            var file = files.FirstOrDefault();
-            if (file == null) return null;
+            if (files == null || files.Count == 0) return null;
 
-            // Handle file path (Avalonia 11+ way)
-            if (file.Path.IsAbsoluteUri)
-            {
-                return file.Path.LocalPath;
-            }
-            return file.Path.ToString();
+            // Convert to array of file paths
+            return files.Select(f => f.Path.IsAbsoluteUri ? f.Path.LocalPath : f.Path.ToString()).ToArray();
         };
 
         // Inject folder dialog logic for output directory

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Reactive;
 using System.Threading.Tasks;
 using ReactiveUI;
@@ -27,12 +29,20 @@ public class MainWindowViewModel : ReactiveObject
 {
     private readonly PreferencesService _preferencesService = new();
 
-    private string _inputFilePath = string.Empty;
-    public string InputFilePath
+    // List of selected files
+    private ObservableCollection<string> _selectedFiles = new();
+    public ObservableCollection<string> SelectedFiles
     {
-        get => _inputFilePath;
-        set => this.RaiseAndSetIfChanged(ref _inputFilePath, value);
+        get => _selectedFiles;
+        set => this.RaiseAndSetIfChanged(ref _selectedFiles, value);
     }
+
+    // Display text for selected files
+    public string SelectedFilesDisplay => SelectedFiles.Count == 0 
+        ? "" 
+        : SelectedFiles.Count == 1 
+            ? Path.GetFileName(SelectedFiles[0])
+            : $"{SelectedFiles.Count} files selected";
 
     private string _statusMessage = "Ready to convert.";
     public string StatusMessage
@@ -171,28 +181,41 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> SelectFileCommand { get; }
     public ReactiveCommand<Unit, Unit> ConvertCommand { get; }
     public ReactiveCommand<Unit, Unit> SelectOutputDirectoryCommand { get; }
+    public ReactiveCommand<Unit, Unit> ClearFilesCommand { get; }
 
-    // Delegate to open file dialog, set by the View
-    public Func<string?, Task<string?>>? ShowOpenFileDialog { get; set; }
+    // Delegate to open file dialog (supports multiple files), set by the View
+    public Func<string?, Task<string[]?>>? ShowOpenFilesDialog { get; set; }
     // Delegate to open folder dialog, set by the View
     public Func<string?, Task<string?>>? ShowSelectFolderDialog { get; set; }
+
+    // Property to check if files are selected
+    public bool HasFilesSelected => SelectedFiles.Count > 0;
 
     public MainWindowViewModel()
     {
         // Load saved preferences
         LoadPreferences();
 
-        SelectFileCommand = ReactiveCommand.CreateFromTask(SelectFileAsync);
+        SelectFileCommand = ReactiveCommand.CreateFromTask(SelectFilesAsync);
         SelectOutputDirectoryCommand = ReactiveCommand.CreateFromTask(SelectOutputDirectoryAsync);
-        // Enable convert when file path is valid and not busy
+        ClearFilesCommand = ReactiveCommand.Create(ClearFiles);
+        
+        // Enable convert when files are selected and not busy
         var canConvert = this.WhenAnyValue(
-            x => x.InputFilePath,
+            x => x.SelectedFiles.Count,
             x => x.IsBusy,
-            (path, busy) => !string.IsNullOrEmpty(path) && !busy
+            (count, busy) => count > 0 && !busy
         );
         ConvertCommand = ReactiveCommand.CreateFromTask(ConvertAsync, canConvert);
 
         SendToKindleCommand = ReactiveCommand.CreateFromTask(SendToKindleAsync, this.WhenAnyValue(x => x.IsBusy, busy => !busy));
+        
+        // Subscribe to collection changes to update display
+        SelectedFiles.CollectionChanged += (_, _) => 
+        {
+            this.RaisePropertyChanged(nameof(SelectedFilesDisplay));
+            this.RaisePropertyChanged(nameof(HasFilesSelected));
+        };
     }
 
     private void LoadPreferences()
@@ -238,186 +261,225 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 
-    private async Task SelectFileAsync()
+    private async Task SelectFilesAsync()
     {
-        if (ShowOpenFileDialog != null)
+        if (ShowOpenFilesDialog != null)
         {
-            var file = await ShowOpenFileDialog.Invoke(LastDirectory);
-            if (!string.IsNullOrEmpty(file))
+            var files = await ShowOpenFilesDialog.Invoke(LastDirectory);
+            if (files != null && files.Length > 0)
             {
-                InputFilePath = file;
-                StatusMessage = $"Selected: {Path.GetFileName(file)}";
+                SelectedFiles.Clear();
+                foreach (var file in files)
+                {
+                    SelectedFiles.Add(file);
+                }
+                
+                StatusMessage = SelectedFiles.Count == 1 
+                    ? $"Selected: {Path.GetFileName(files[0])}"
+                    : $"Selected {SelectedFiles.Count} files";
                 ProgressText = "";
                 ProgressValue = 0;
 
                 // Save the directory for next time
-                LastDirectory = Path.GetDirectoryName(file);
+                LastDirectory = Path.GetDirectoryName(files[0]);
                 SavePreferences();
             }
         }
     }
 
+    private void ClearFiles()
+    {
+        SelectedFiles.Clear();
+        StatusMessage = "Ready to convert.";
+        ProgressText = "";
+        ProgressValue = 0;
+    }
+
     private async Task ConvertAsync()
     {
+        if (SelectedFiles.Count == 0) return;
+        
+        var filesToProcess = SelectedFiles.ToList(); // Copy to avoid modification during iteration
+        int totalFiles = filesToProcess.Count;
+        int successCount = 0;
+        int errorCount = 0;
+        var lastOutputPath = string.Empty;
+
         try
         {
             IsBusy = true;
-            ProgressValue = 0;
-            ProgressMax = 100; // Placeholder
-            ProgressText = "Preparing...";
 
-            StatusMessage = "Converting PDF to text...";
-            var input = InputFilePath; // Capture for thread safety
-
-            // Run on background thread
-            // Also extract cover image here to avoid blocking UI
-            (string englishMd, byte[]? coverBytes) = await Task.Run(() =>
+            for (int fileIndex = 0; fileIndex < filesToProcess.Count; fileIndex++)
             {
-                var converter = new PdfToMarkdownConverter();
-                var text = converter.Convert(input);
-                var cover = converter.ExtractCoverImage(input);
-                return (text, cover);
-            });
-
-            string finalMd;
-            string epubSuffix;
-
-            if (TranslateBeforeConvert && SelectedLanguage != null)
-            {
-                StatusMessage = $"Translating to {SelectedLanguage.Name}...";
-
-                var progress = new Progress<(int current, int total)>(p =>
-                {
-                    ProgressValue = p.current;
-                    ProgressMax = p.total;
-                    ProgressText = $"{p.current}/{p.total}";
-                });
-
-                var targetLang = SelectedLanguage.Code;
-                finalMd = await Task.Run(async () =>
-                {
-                    var translator = new TranslationService();
-                    return await translator.TranslateAsync(englishMd, targetLang, progress);
-                });
-                epubSuffix = SelectedLanguage.FileSuffix;
-            }
-            else
-            {
-                finalMd = englishMd;
-                epubSuffix = "";
-            }
-
-            // Save to file (same location as PDF, but .md)
-            string outputPath = Path.ChangeExtension(input, ".md");
-            await File.WriteAllTextAsync(outputPath, finalMd);
-
-            // Use output directory if specified, otherwise use same folder as input
-            string outputDir = !string.IsNullOrEmpty(OutputDirectory) 
-                ? OutputDirectory 
-                : Path.GetDirectoryName(input) ?? "";
-
-            string finalOutputPath;
-
-            if (SelectedOutputFormat == OutputFormat.Pdf)
-            {
-                // PDF output: Convert markdown to PDF
-                StatusMessage = "Generating PDF...";
+                var input = filesToProcess[fileIndex];
+                var fileName = Path.GetFileName(input);
                 
-                string pdfOutputPath = Path.Combine(
-                    outputDir,
-                    Path.GetFileNameWithoutExtension(input) + epubSuffix + "_translated.pdf"
-                );
-                
-                await Task.Run(() =>
+                try
                 {
-                    var pdfConverter = new MarkdownToPdfConverter();
-                    pdfConverter.Convert(finalMd, pdfOutputPath);
-                });
-                
-                finalOutputPath = pdfOutputPath;
-                StatusMessage = $"Success! PDF saved to: {pdfOutputPath}";
-            }
-            else
-            {
-                // EPUB output
-                StatusMessage = "Generating EPUB...";
-                
-                string epubOutputPath = Path.Combine(
-                    outputDir,
-                    Path.GetFileNameWithoutExtension(input) + epubSuffix + ".epub"
-                );
+                    ProgressValue = 0;
+                    ProgressMax = 100;
+                    ProgressText = totalFiles > 1 
+                        ? $"File {fileIndex + 1}/{totalFiles}: {fileName}"
+                        : fileName;
 
-                await Task.Run(() =>
-                {
-                    var epubConverter = new MarkdownToEpubConverter();
-                    epubConverter.Convert(finalMd, epubOutputPath, coverBytes);
-                });
+                    StatusMessage = $"Converting: {fileName}...";
 
-                finalOutputPath = epubOutputPath;
-
-                // Convert via AZW3 for better Kindle compatibility (EPUB → AZW3 → EPUB round-trip)
-                if (ConvertToAzw3)
-                {
-                    if (CalibreConverter.IsCalibreInstalled())
+                    // Run on background thread
+                    // Also extract cover image here to avoid blocking UI
+                    (string englishMd, byte[]? coverBytes) = await Task.Run(() =>
                     {
-                        var calibreProgress = new Progress<string>(msg =>
+                        var converter = new PdfToMarkdownConverter();
+                        var text = converter.Convert(input);
+                        var cover = converter.ExtractCoverImage(input);
+                        return (text, cover);
+                    });
+
+                    string finalMd;
+                    string epubSuffix;
+
+                    if (TranslateBeforeConvert && SelectedLanguage != null)
+                    {
+                        StatusMessage = $"Translating {fileName} to {SelectedLanguage.Name}...";
+
+                        var progress = new Progress<(int current, int total)>(p =>
                         {
-                            ProgressText = msg;
+                            ProgressValue = p.current;
+                            ProgressMax = p.total;
+                            var fileProgress = totalFiles > 1 ? $"File {fileIndex + 1}/{totalFiles}: " : "";
+                            ProgressText = $"{fileProgress}{p.current}/{p.total}";
                         });
 
-                        var calibreConverter = new CalibreConverter();
-                        
-                        // Step 1: EPUB → AZW3
-                        StatusMessage = "Converting EPUB to AZW3...";
-                        ProgressText = "EPUB → AZW3...";
-                        string azw3OutputPath = Path.ChangeExtension(epubOutputPath, ".azw3");
-                        await calibreConverter.ConvertEpubToAzw3Async(epubOutputPath, azw3OutputPath, calibreProgress);
-                        
-                        // Step 2: AZW3 → EPUB (this fixes validation issues)
-                        StatusMessage = "Converting AZW3 back to EPUB...";
-                        ProgressText = "AZW3 → EPUB...";
-                        string polishedEpubPath = Path.Combine(
-                            outputDir,
-                            Path.GetFileNameWithoutExtension(input) + epubSuffix + "_kindle.epub"
-                        );
-                        await calibreConverter.ConvertAzw3ToEpubAsync(azw3OutputPath, polishedEpubPath, calibreProgress);
-                        
-                        finalOutputPath = polishedEpubPath;
-                        StatusMessage = $"Success! Kindle-compatible EPUB saved to: {polishedEpubPath}";
-
-                        // Clean up intermediate files (original EPUB and AZW3)
-                        try
+                        var targetLang = SelectedLanguage.Code;
+                        finalMd = await Task.Run(async () =>
                         {
-                            if (File.Exists(epubOutputPath)) File.Delete(epubOutputPath);
-                            if (File.Exists(azw3OutputPath)) File.Delete(azw3OutputPath);
-                        }
-                        catch { /* Ignore cleanup errors */ }
+                            var translator = new TranslationService();
+                            return await translator.TranslateAsync(englishMd, targetLang, progress);
+                        });
+                        epubSuffix = SelectedLanguage.FileSuffix;
                     }
                     else
                     {
-                        StatusMessage = $"EPUB saved: {epubOutputPath} (Install Calibre for Kindle optimization)";
+                        finalMd = englishMd;
+                        epubSuffix = "";
                     }
+
+                    // Save to file (same location as PDF, but .md)
+                    string outputPath = Path.ChangeExtension(input, ".md");
+                    await File.WriteAllTextAsync(outputPath, finalMd);
+
+                    // Use output directory if specified, otherwise use same folder as input
+                    string outputDir = !string.IsNullOrEmpty(OutputDirectory) 
+                        ? OutputDirectory 
+                        : Path.GetDirectoryName(input) ?? "";
+
+                    string finalOutputPath;
+
+                    if (SelectedOutputFormat == OutputFormat.Pdf)
+                    {
+                        // PDF output: Convert markdown to PDF
+                        StatusMessage = $"Generating PDF: {fileName}...";
+                        
+                        string pdfOutputPath = Path.Combine(
+                            outputDir,
+                            Path.GetFileNameWithoutExtension(input) + epubSuffix + "_translated.pdf"
+                        );
+                        
+                        await Task.Run(() =>
+                        {
+                            var pdfConverter = new MarkdownToPdfConverter();
+                            pdfConverter.Convert(finalMd, pdfOutputPath);
+                        });
+                        
+                        finalOutputPath = pdfOutputPath;
+                    }
+                    else
+                    {
+                        // EPUB output
+                        StatusMessage = $"Generating EPUB: {fileName}...";
+                        
+                        string epubOutputPath = Path.Combine(
+                            outputDir,
+                            Path.GetFileNameWithoutExtension(input) + epubSuffix + ".epub"
+                        );
+
+                        await Task.Run(() =>
+                        {
+                            var epubConverter = new MarkdownToEpubConverter();
+                            epubConverter.Convert(finalMd, epubOutputPath, coverBytes);
+                        });
+
+                        finalOutputPath = epubOutputPath;
+
+                        // Convert via AZW3 for better Kindle compatibility (EPUB → AZW3 → EPUB round-trip)
+                        if (ConvertToAzw3 && CalibreConverter.IsCalibreInstalled())
+                        {
+                            var calibreProgress = new Progress<string>(msg =>
+                            {
+                                var fileProgress = totalFiles > 1 ? $"File {fileIndex + 1}/{totalFiles}: " : "";
+                                ProgressText = fileProgress + msg;
+                            });
+
+                            var calibreConverter = new CalibreConverter();
+                            
+                            // Step 1: EPUB → AZW3
+                            StatusMessage = $"Converting to AZW3: {fileName}...";
+                            string azw3OutputPath = Path.ChangeExtension(epubOutputPath, ".azw3");
+                            await calibreConverter.ConvertEpubToAzw3Async(epubOutputPath, azw3OutputPath, calibreProgress);
+                            
+                            // Step 2: AZW3 → EPUB (this fixes validation issues)
+                            StatusMessage = $"Converting AZW3 to EPUB: {fileName}...";
+                            string polishedEpubPath = Path.Combine(
+                                outputDir,
+                                Path.GetFileNameWithoutExtension(input) + epubSuffix + "_kindle.epub"
+                            );
+                            await calibreConverter.ConvertAzw3ToEpubAsync(azw3OutputPath, polishedEpubPath, calibreProgress);
+                            
+                            finalOutputPath = polishedEpubPath;
+
+                            // Clean up intermediate files (original EPUB and AZW3)
+                            try
+                            {
+                                if (File.Exists(epubOutputPath)) File.Delete(epubOutputPath);
+                                if (File.Exists(azw3OutputPath)) File.Delete(azw3OutputPath);
+                            }
+                            catch { /* Ignore cleanup errors */ }
+                        }
+                    }
+
+                    // Clean up intermediate markdown file (keep original PDF)
+                    try
+                    {
+                        if (File.Exists(outputPath)) File.Delete(outputPath);
+                    }
+                    catch { /* Ignore cleanup errors */ }
+
+                    lastOutputPath = finalOutputPath;
+                    successCount++;
                 }
-                else
+                catch (Exception ex)
                 {
-                    StatusMessage = $"Success! Saved to: {epubOutputPath}";
+                    errorCount++;
+                    StatusMessage = $"Error processing {fileName}: {ex.Message}";
+                    // Continue with next file
                 }
             }
 
-            // Clean up intermediate markdown file (keep original PDF)
-            try
+            // Final status message
+            if (totalFiles == 1)
             {
-                if (File.Exists(outputPath)) File.Delete(outputPath);
+                StatusMessage = successCount == 1 
+                    ? $"Success! Saved to: {lastOutputPath}"
+                    : $"Error processing file";
             }
-            catch
+            else
             {
-                // Ignore cleanup errors
+                StatusMessage = errorCount == 0
+                    ? $"Done! Successfully processed {successCount} files."
+                    : $"Done! {successCount} succeeded, {errorCount} failed.";
             }
 
             ProgressText = "Done";
-
-            // Enable/Setup for email
-            GeneratedPdfPath = finalOutputPath;
+            GeneratedPdfPath = lastOutputPath;
         }
         catch (Exception ex)
         {
@@ -440,11 +502,14 @@ public class MainWindowViewModel : ReactiveObject
 
     private async Task SendToKindleAsync()
     {
-        if (ShowOpenFileDialog == null) return;
-
-        // User requested to select a file ensuring we pick what they want
-        var fileToSend = await ShowOpenFileDialog.Invoke(LastDirectory);
-        if (string.IsNullOrEmpty(fileToSend)) return;
+        // Use the last generated output path, or prompt user to convert first
+        var fileToSend = GeneratedPdfPath;
+        
+        if (string.IsNullOrEmpty(fileToSend) || !File.Exists(fileToSend))
+        {
+            StatusMessage = "Please convert a file first, then send to Kindle.";
+            return;
+        }
 
         try
         {

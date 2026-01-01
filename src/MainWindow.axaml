@@ -21,15 +21,22 @@
                    HorizontalAlignment="Center"
                    Margin="0,0,0,10"/>
         
-        <Grid ColumnDefinitions="*, Auto">
+        <Grid ColumnDefinitions="*, Auto, Auto">
             <TextBox Grid.Column="0" 
-                     Text="{Binding InputFilePath}" 
+                     Text="{Binding SelectedFilesDisplay}" 
                      IsReadOnly="True" 
-                     Watermark="Select a PDF file..." 
+                     Watermark="Select PDF files..." 
                      Margin="0,0,10,0"/>
             <Button Grid.Column="1" 
                     Content="Browse..." 
-                    Command="{Binding SelectFileCommand}"/>
+                    Command="{Binding SelectFileCommand}"
+                    Margin="0,0,5,0"/>
+            <Button Grid.Column="2" 
+                    Content="✕" 
+                    ToolTip.Tip="Clear selection"
+                    Command="{Binding ClearFilesCommand}"
+                    IsVisible="{Binding HasFilesSelected}"
+                    Width="30"/>
         </Grid>
         
         <StackPanel Orientation="Horizontal" Spacing="10">
