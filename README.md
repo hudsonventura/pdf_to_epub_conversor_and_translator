@@ -1,11 +1,11 @@
-# 📚 Book Translator
+# 📚 PDF to EPUB and Translator with support to Kindle
 
 <p align="center">
   <strong>🔄 Convert • 🌍 Translate • 📖 Read Anywhere</strong>
 </p>
 
 <p align="center">
-  A desktop application that converts PDF books to EPUB format with built-in translation support — perfect for sending to your Kindle!
+  A muliplatform desktop application that converts PDF books to EPUB format with built-in translation support — perfect for sending to your Kindle!
 </p>
 
 ---
@@ -17,16 +17,24 @@
 | 📄 **PDF to EPUB Conversion** | Seamlessly convert your PDF books to the popular EPUB format |
 | 🌐 **Multi-Language Translation** | Translate your books into multiple languages before conversion |
 | 📱 **Send to Kindle** | One-click email your converted books directly to your Kindle device |
-| 💾 **Smart Preferences** | Remembers your last used directory and language preferences |
 | 🎨 **Modern UI** | Beautiful, cross-platform interface built with Avalonia UI |
 
 ---
 
+## 🎨 UI
+
+Main Screen  
+![Main Screen](assets/main_screen.png)
+
+
+
 ## 🚀 Getting Started
+Go to: https://github.com/hudsonventura/pdf_to_epub_conversor_and_translator/releases  
+
+Download the latest release for your platform and run it.  
 
 
-
-## 🚀 Building
+## 🚀 Building (if you are a dev)
 
 ### Prerequisites
 
@@ -48,17 +56,35 @@
 
 3. **Run the application**
    ```bash
-   dotnet run --project src/BookTranslator.csproj
+   dotnet run
    ```
 
 ---
+
+## 🚀 Releasing
+
+#### On Linux (AppImage)
+```bash
+# Make script executable (first time only)
+chmod +x build-appimage.sh
+
+# Build AppImage
+./build-appimage.sh
+```
+This creates `BookTranslator-1.0.0-x86_64.AppImage` — a portable, single-file executable that works on any Linux distro.
+
+#### On Windows
+```bash
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
+```
 
 ## 📖 How to Use
 
 ### Basic Conversion
 1. 🖱️ Click **"Browse..."** to select your PDF file
 2. ⚡ Click **"Convert to EPUB"** to start the conversion
-3. ✅ Your EPUB file will be saved in the same directory as the original PDF
+3. ✅ Your EPUB file will be saved in the output directory
+4. 📧 Send the EPUB to your Kindle device via e-mail
 
 ### 🌍 Translate Your Books
 > **Perfect for reading foreign books in your native language or learning a new language!**
@@ -71,9 +97,9 @@
 ### 📱 Send to Kindle
 > **Read your translated books on your Kindle device!**
 
-1. 📧 Configure your email settings in `appsettings.json`
+1. 📧 Configure your email settings in ⚙️ button
 2. 📄 Convert your PDF to EPUB (with or without translation)
-3. 📨 Click **"Send to Kindle"** to email the book to your Kindle
+3. 📨 Click **"Send to Kindle"** and select the EPUBs file as you want
 4. 📚 Your book will appear in your Kindle library!
 
 ---
@@ -82,20 +108,21 @@
 
 ### Email Settings (for Kindle delivery)
 
-Edit the `src/appsettings.json` file to configure your email settings:
+#### For GMail
+> ⚠️ **Note:** For **Gmail**, instead of your regular password, you'll need to create a App Password in https://support.google.com/accounts/answer/185833 
 
-```json
-{
-  "EmailSettings": {
-    "SmtpServer": "smtp.gmail.com",
-    "SmtpPort": 587,
-    "SenderEmail": "your-email@gmail.com",
-    "SenderPassword": "your-app-password"
-  }
-}
-```
+To see the Outlook configs, please visit https://support.microsoft.com/en-us/office/pop-imap-and-smtp-settings-for-outlook-com-d088b986-291d-42b8-9564-9c414e2aa040
 
-> ⚠️ **Note:** For Gmail, you'll need to use an [App Password](https://support.google.com/accounts/answer/185833) instead of your regular password.
+#### For Outlook
+> ⚠️ **Note:** For **Outlook**, instead of your regular password, you'll need to create a App Password in  https://go.microsoft.com/fwlink/?linkid=2274139 
+
+To see the Outlook configs, please visit https://support.microsoft.com/en-us/office/pop-imap-and-smtp-settings-for-outlook-com-d088b986-291d-42b8-9564-9c414e2aa040
+
+![Smtp Settings](assets/smtp-settings.png)
+
+
+
+
 
 ---
 
@@ -105,10 +132,11 @@ The translation feature supports a wide variety of languages including:
 
 | Language | Code | Language | Code |
 |----------|------|----------|------|
-| 🇺🇸 English | `en` | 🇧🇷 Portuguese | `pt` |
+| 🇺🇸 English | `en-us` | 🇬🇧 English | `en-uk` |
+| 🇧🇷 Portuguese | `pt-br` | 🇵🇹 Portuguese | `pt-pt` |
 | 🇪🇸 Spanish | `es` | 🇫🇷 French | `fr` |
 | 🇩🇪 German | `de` | 🇮🇹 Italian | `it` |
-| 🇯🇵 Japanese | `ja` | 🇨🇳 Chinese | `zh` |
+| 🇯🇵 Japanese | `ja` | 🇨🇳 Chinese (Simplified) | `zh` |
 | 🇰🇷 Korean | `ko` | 🇷🇺 Russian | `ru` |
 
 *...and many more!*
@@ -174,33 +202,10 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-## 🙋 FAQ
 
-<details>
-<summary><b>Why isn't my PDF converting correctly?</b></summary>
-
-Some PDFs, especially scanned documents or those with complex layouts, may not convert perfectly. For best results, use PDFs with selectable text.
-</details>
-
-<details>
-<summary><b>How do I find my Kindle email address?</b></summary>
-
-1. Go to [Amazon's Manage Your Content and Devices](https://www.amazon.com/hz/mycd/digital-console/contentlist/allcontent)
-2. Click on the "Devices" tab
-3. Select your Kindle device
-4. Find your Kindle email (ends with @kindle.com)
-</details>
-
-<details>
-<summary><b>Is the translation feature free?</b></summary>
-
-Yes! The translation uses free translation services. However, there may be rate limits for very large books.
-</details>
-
----
 
 <p align="center">
-  Made with ❤️ for book lovers everywhere
+  Made with ❤️ for a book lover, my wonderful wife Adriana
 </p>
 
 <p align="center">

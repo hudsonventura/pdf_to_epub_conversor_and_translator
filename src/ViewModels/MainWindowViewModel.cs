@@ -136,6 +136,9 @@ public class MainWindowViewModel : ReactiveObject
     public List<LanguageItem> AvailableLanguages { get; } = new()
     {
         new LanguageItem { Code = "pt", Name = "Portuguese (Brazil)", FileSuffix = "_PT-Br" },
+        new LanguageItem { Code = "pt-pt", Name = "Portuguese (Portugal)", FileSuffix = "_PT-Pt" },
+        new LanguageItem { Code = "en-us", Name = "English (US)", FileSuffix = "_EN-US" },
+        new LanguageItem { Code = "en-uk", Name = "English (UK)", FileSuffix = "_EN-UK" },
         new LanguageItem { Code = "es", Name = "Spanish", FileSuffix = "_ES" },
         new LanguageItem { Code = "fr", Name = "French", FileSuffix = "_FR" },
         new LanguageItem { Code = "de", Name = "German", FileSuffix = "_DE" },
@@ -187,6 +190,8 @@ public class MainWindowViewModel : ReactiveObject
     public Func<string?, Task<string[]?>>? ShowOpenFilesDialog { get; set; }
     // Delegate to open folder dialog, set by the View
     public Func<string?, Task<string?>>? ShowSelectFolderDialog { get; set; }
+    // Delegate to open file dialog for EPUB files to send to Kindle
+    public Func<string?, Task<string[]?>>? ShowOpenEpubFilesDialog { get; set; }
 
     // Property to check if files are selected
     public bool HasFilesSelected => SelectedFiles.Count > 0;
@@ -502,24 +507,70 @@ public class MainWindowViewModel : ReactiveObject
 
     private async Task SendToKindleAsync()
     {
-        // Use the last generated output path, or prompt user to convert first
-        var fileToSend = GeneratedPdfPath;
-        
-        if (string.IsNullOrEmpty(fileToSend) || !File.Exists(fileToSend))
+        // Open file picker to select EPUB files
+        if (ShowOpenEpubFilesDialog == null)
         {
-            StatusMessage = "Please convert a file first, then send to Kindle.";
+            StatusMessage = "File dialog not available.";
             return;
         }
+
+        var files = await ShowOpenEpubFilesDialog.Invoke(LastDirectory);
+        if (files == null || files.Length == 0)
+        {
+            return; // User cancelled
+        }
+
+        // Update last directory
+        LastDirectory = Path.GetDirectoryName(files[0]);
+        SavePreferences();
+
+        int totalFiles = files.Length;
+        int successCount = 0;
+        int errorCount = 0;
 
         try
         {
             IsBusy = true;
-            StatusMessage = $"Sending {Path.GetFileName(fileToSend)} to Kindle...";
-
             var emailService = new EmailService();
-            await Task.Run(() => emailService.SendToKindleAsync(fileToSend));
 
-            StatusMessage = "Email sent successfully!";
+            for (int i = 0; i < files.Length; i++)
+            {
+                var file = files[i];
+                var fileName = Path.GetFileName(file);
+
+                try
+                {
+                    ProgressValue = i;
+                    ProgressMax = totalFiles;
+                    ProgressText = $"{i + 1}/{totalFiles}";
+                    StatusMessage = $"Sending {fileName} to Kindle...";
+
+                    await Task.Run(() => emailService.SendToKindleAsync(file));
+                    successCount++;
+                }
+                catch (Exception ex)
+                {
+                    errorCount++;
+                    StatusMessage = $"Failed to send {fileName}: {ex.Message}";
+                    // Continue with next file
+                }
+            }
+
+            // Final status
+            ProgressValue = totalFiles;
+            if (totalFiles == 1)
+            {
+                StatusMessage = successCount == 1 
+                    ? "Email sent successfully!" 
+                    : "Failed to send email.";
+            }
+            else
+            {
+                StatusMessage = errorCount == 0
+                    ? $"Done! Successfully sent {successCount} files to Kindle."
+                    : $"Done! {successCount} sent, {errorCount} failed.";
+            }
+            ProgressText = "Done";
         }
         catch (Exception ex)
         {
@@ -531,3 +582,4 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 }
+

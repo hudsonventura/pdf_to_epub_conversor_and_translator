@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="BookTranslator.SmtpSettingsWindow"
+        Title="SMTP Settings"
+        Width="420" Height="380"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <StackPanel Margin="20" Spacing="15">
+        <TextBlock Text="Email Configuration" 
+                   FontSize="18" 
+                   FontWeight="Bold" 
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,10"/>
+
+        <Grid ColumnDefinitions="120, *" RowDefinitions="Auto, Auto, Auto, Auto, Auto" RowSpacing="10">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="SMTP Server:" VerticalAlignment="Center"/>
+            <TextBox Grid.Row="0" Grid.Column="1" Name="SmtpServerTextBox" Watermark="smtp.gmail.com"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Port:" VerticalAlignment="Center"/>
+            <TextBox Grid.Row="1" Grid.Column="1" Name="SmtpPortTextBox" Watermark="587"/>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Sender Email:" VerticalAlignment="Center"/>
+            <TextBox Grid.Row="2" Grid.Column="1" Name="SenderEmailTextBox" Watermark="your-email@gmail.com"/>
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Password:" VerticalAlignment="Center"/>
+            <TextBox Grid.Row="3" Grid.Column="1" Name="SenderPasswordTextBox" PasswordChar="•" Watermark="App password"/>
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="Kindle Email:" VerticalAlignment="Center"/>
+            <TextBox Grid.Row="4" Grid.Column="1" Name="KindleEmailTextBox" Watermark="your-name@kindle.com"/>
+        </Grid>
+
+        <TextBlock Text="💡 For Gmail, use an App Password instead of your regular password."
+                   FontSize="11"
+                   Foreground="Gray"
+                   TextWrapping="Wrap"
+                   Margin="0,5,0,0"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,15,0,0">
+            <Button Name="TestButton" Content="Test Connection" Width="130"/>
+            <Button Name="SaveButton" Content="Save" Width="80" Background="#007ACC" Foreground="White"/>
+            <Button Name="CancelButton" Content="Cancel" Width="80"/>
+        </StackPanel>
+
+        <TextBlock Name="StatusTextBlock" 
+                   Text="" 
+                   HorizontalAlignment="Center" 
+                   FontSize="12"
+                   TextWrapping="Wrap"/>
+    </StackPanel>
+</Window>

@@ -99,13 +99,22 @@
                 Foreground="White"
                 FontWeight="SemiBold"/>
         
-        <Button Content="Send to Kindle"
-                Command="{Binding SendToKindleCommand}"
-                HorizontalAlignment="Stretch"
-                HorizontalContentAlignment="Center"
-                Background="#FF9900" 
-                Foreground="White"
-                FontWeight="SemiBold"/>
+        <Grid ColumnDefinitions="*, Auto">
+            <Button Grid.Column="0"
+                    Content="Send to Kindle"
+                    Command="{Binding SendToKindleCommand}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Background="#FF9900" 
+                    Foreground="White"
+                    FontWeight="SemiBold"/>
+            <Button Grid.Column="1"
+                    Name="SmtpSettingsButton"
+                    Content="⚙️"
+                    ToolTip.Tip="Configure SMTP settings"
+                    Width="40"
+                    Margin="5,0,0,0"/>
+        </Grid>
         
         <StackPanel IsVisible="{Binding IsBusy}" Spacing="5">
             <ProgressBar Minimum="0" 

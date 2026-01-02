@@ -3,38 +3,27 @@ using System.IO;
 using System.Net;
 using System.Net.Mail;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
+using BookTranslator.Services;
 
 namespace BookTranslator.Services;
 
 public class EmailService
 {
-    private readonly IConfiguration _configuration;
-
-    public EmailService()
-    {
-        var builder = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
-
-        _configuration = builder.Build();
-    }
+    private readonly SmtpSettingsService _settingsService = new();
 
     public async Task SendToKindleAsync(string filePath)
     {
-        var settings = _configuration.GetSection("EmailSettings");
-        var smtpServer = settings["SmtpServer"];
-        var smtpPort = int.Parse(settings["SmtpPort"] ?? "587");
-        var senderEmail = settings["SenderEmail"];
-        var senderPassword = settings["SenderPassword"];
-        var toEmail = "hudsonventura@kindle.com";
-
-        if (string.IsNullOrEmpty(senderEmail) || string.IsNullOrEmpty(senderPassword))
+        var settings = _settingsService.GetSettings();
+        
+        if (string.IsNullOrEmpty(settings.SmtpServer) || 
+            string.IsNullOrEmpty(settings.SenderEmail) || 
+            string.IsNullOrEmpty(settings.SenderPassword) ||
+            string.IsNullOrEmpty(settings.KindleEmail))
         {
-            throw new InvalidOperationException("Email settings are not configured. Please check appsettings.json.");
+            throw new InvalidOperationException("SMTP settings are not configured. Please click the gear icon (⚙️) to configure email settings.");
         }
 
-        var message = new MailMessage(senderEmail, toEmail)
+        var message = new MailMessage(settings.SenderEmail, settings.KindleEmail)
         {
             Subject = "convert",
             Body = "Sending converted book to Kindle."
@@ -50,10 +39,10 @@ public class EmailService
             throw new FileNotFoundException("File not found.", filePath);
         }
 
-        using (var client = new SmtpClient(smtpServer, smtpPort))
+        using (var client = new SmtpClient(settings.SmtpServer, settings.SmtpPort))
         {
             client.EnableSsl = true;
-            client.Credentials = new NetworkCredential(senderEmail, senderPassword);
+            client.Credentials = new NetworkCredential(settings.SenderEmail, settings.SenderPassword);
             await client.SendMailAsync(message);
         }
     }

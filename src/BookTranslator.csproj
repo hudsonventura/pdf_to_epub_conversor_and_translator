@@ -25,6 +25,7 @@
     <PackageReference Include="PdfPig" Version="0.1.12" />
     <PackageReference Include="EpubCore" Version="1.5.0" />
     <PackageReference Include="QuestPDF" Version="2024.12.2" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>

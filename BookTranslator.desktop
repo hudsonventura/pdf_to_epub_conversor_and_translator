@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Book Translator
+Comment=PDF to EPUB converter and translator with Kindle support
+Exec=BookTranslator
+Icon=booktranslator
+Type=Application
+Categories=Office;Utility;
+Terminal=false
